@@ -1,0 +1,9 @@
+[submodule "thirdParty/odeint"]
+	path = thirdParty/odeint
+	url = https://github.com/lhofmann/odeint.git
+	branch = thrust_1_10_0
+	shallow = true
+[submodule "thirdParty/alpaka"]
+	path = thirdParty/alpaka
+	url = https://github.com/alpaka-group/alpaka.git
+	shallow = true

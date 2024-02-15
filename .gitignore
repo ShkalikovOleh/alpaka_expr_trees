@@ -1,0 +1,16 @@
+build
+.cache
+.vscode
+phase_*.dat
+
+# Tex
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+slides.pdf
+*.snm
+*.synctex.gz
+*.toc
+*.vrb
