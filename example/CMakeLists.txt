@@ -1,0 +1,19 @@
+add_executable(phase_oscillator_ensemble_thrust phase_oscillator_ensemble_thrust.cu)
+target_include_directories(phase_oscillator_ensemble_thrust SYSTEM BEFORE PRIVATE
+	${CMAKE_SOURCE_DIR}/thirdParty/odeint/include/
+	)
+
+add_executable(phase_oscillator_chain_thrust phase_oscillator_chain_thrust.cu)
+target_include_directories(phase_oscillator_chain_thrust SYSTEM BEFORE PRIVATE
+	${CMAKE_SOURCE_DIR}/thirdParty/odeint/include/
+	)
+
+alpaka_add_executable(phase_oscillator_ensemble_alpaka phase_oscillator_ensemble_alpaka.cpp)
+target_link_libraries(
+	phase_oscillator_ensemble_alpaka
+	PUBLIC alpaka::alpaka)
+
+alpaka_add_executable(phase_oscillator_chain_alpaka phase_oscillator_chain_alpaka.cpp)
+target_link_libraries(
+	phase_oscillator_chain_alpaka
+	PUBLIC alpaka::alpaka)
