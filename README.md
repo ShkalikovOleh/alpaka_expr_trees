@@ -1,7 +1,8 @@
 # Alpaka expression trees as boost.odeint backend
 
-This repo contains implementation of expression trees for alpaka library which supports automatic device kernels fusion in compile time and
-implementation of boost.odeint backend in order to use these expressions for solving initial value (Cauchy) problem for ODE.
+This repo contains an implementation of expression trees which supports automatic device kernels fusion in a compile time.
+The expressions based on Alpaka library and is being used to implement *boost.odeint* backend in order to use Alpaka
+for solving initial value (Cauchy) problem.
 
 *Note*: Initially it was a team project (in cooperation with Paul Hempel (TUD) and supervised by Dr. Jeffrey Kelling (HZDR)), but this is a copy
 which contains a slightly modified code which was written by me (unless original author is specified in the header of the file).
@@ -9,21 +10,21 @@ which contains a slightly modified code which was written by me (unless original
 ## Alpaka
 
 The Alpaka library is a header-only C++17 abstraction library for accelerator development. It abstract specific
-accelerator API and allow user to write accelerated application for different types of devices from different manufactures.
-For more information on Alpaka I recommend read the [official documentation](https://alpaka.readthedocs.io/en/latest/basic/intro.html).
+accelerator API and allows user to write accelerated application for different types of devices from different manufactures.
+For more information about Alpaka I recommend read the [official documentation](https://alpaka.readthedocs.io/en/latest/basic/intro.html).
 
-But this library provide an ability only to abstract from the specific accelerator, but one should still write their own kernels.
+This library provide an ability only to abstract from the specific accelerator, but one should still write their own kernels.
 
 ## Boost.Odeint
 
-[Boost.Odeint](https://www.boost.org/doc/libs/1_84_0/libs/numeric/odeint/doc/html/index.html) is a library for solving initial value problems of ordinary differential equations. It abstract actual calculation in a way
-that anyone can add their own types for dynamic system state / derivatives and implement algebra and operation which will be used during integration.
-More detailed requirements to a new backend can be found in the official documentation: [here](https://www.boost.org/doc/libs/1_84_0/libs/numeric/odeint/doc/html/boost_numeric_odeint/concepts/state_wrapper.html) and [here](https://www.boost.org/doc/libs/1_82_0/libs/numeric/odeint/doc/html/boost_numeric_odeint/concepts/state_algebra_operations.html).
+[Boost.Odeint](https://www.boost.org/doc/libs/1_84_0/libs/numeric/odeint/doc/html/index.html) is a library for solving initial value problems of ordinary differential equations. It abstracts actual calculation in a way
+that anyone can add their own types for dynamic system state / derivatives and implement algebra and operations which will be used during integration.
+More detailed requirements to new backends can be found in the official documentation: [here](https://www.boost.org/doc/libs/1_84_0/libs/numeric/odeint/doc/html/boost_numeric_odeint/concepts/state_wrapper.html) and [here](https://www.boost.org/doc/libs/1_82_0/libs/numeric/odeint/doc/html/boost_numeric_odeint/concepts/state_algebra_operations.html).
 
 ## Eager and lazy evaluation
 
-The classical approach to calculation we are used to is **eager**, i.e. if one applies the operation on a vector the result is immediately calculated.
-This introduces additional memory allocations and kernel launches which can significantly sacrifice the performance. For example:
+The classical approach to calculation we are used to is **eager**, i.e. if one applies an operation on a vector the result is immediately calculated.
+This introduces additional memory allocations and kernels launches which can significantly sacrifice the performance. For example:
 ```[cpp]
 vec a = ...;
 vec b = ...;
@@ -36,9 +37,9 @@ Actually the computation in eager mode is performed like this:
 vec res_ab = a + b;
 vec res = res_ab + c;
 ```
-So, actually there were 2 kernel launches and two memory allocations.
+So, actually there were 2 kernel launches and 2 memory allocations.
 
-The idea of **lazy evaluation** is to just gather information of all operand and operators (construct expression tree) and
+The idea of **lazy evaluation** is to just gather information of all operands and operators (construct expression tree) and
 evaluate the whole expression only once (where it is needed) and therefore allocate device memory and launch kernel only once.
 
 ## Explanation of the solution
@@ -60,25 +61,25 @@ The expression system is mostly inspired by [Eigen](https://eigen.tuxfamily.org/
 2. Operations should be known by device (and not all of them point wise)
 3. Some expressions are not lazy evaluatable (e.g. reduction)
 
-In short words Eigen expression system works as follows: assume you want to sum 2 vectors. The `operator+` instead of returning the value of type vector (which is also type of expression) returns specific `BinaryExpression` with a summation functor. Then user can use this `BinaryExpression`  to construct other expressions and form the trees of expressions. And actual fused calculation and allocation of memory for the result happens only on assignment to the resulting vector.
+In short words the expression system works as follows: assume user wants to sum up 2 vectors: `a + b`. But the `operator+` instead of returning the value of type vector (which is also type of expression) returns specific `BinaryExpression` with a summation functor. Then user can use this `BinaryExpression`  to construct other expressions and form a tree of expressions. And actual fused calculation and allocation of memory for the result happens only on assignment to the resulting vector.
 
-But in order to solve problems problems described above the concept of the `AccExpressionHandler`s has been introduced.
+In order to solve problems described above the concept of the `AccExpressionHandler`s has been introduced.
 
 ![the concept of the `AccExpressionHandler`s](assets/acc_expr_handler_workflow.png)
 
 In short words:
-- When user call assignment to `Vector` the evaluator class is used to compute the results.
+- When user calls assignment to `Vector` the evaluator class is used to compute the results.
 - Evaluator gets a `AccExpressionHandler` from the root expression.
-- Evaluator calls method `prepare()` of this handler. `prepare` method can internally calls `prepare` methods of child nodes, get and store (for using during calculation) a pointer to the device memory or evaluate non-lazy expression and store the pointer to the device memory where the result of evaluation of non-lazy expression is placed. This solved 1 and 3 problems.
-- Then evaluator launches the kernel and pass as an argument (by copying) the prepared root expression handler. The kernel just calls `get_value` method of the handler which recursively calls the `get_value` methods of the whole trees. And since the functor for calculating the result can be stored in the `AccExpressionHandler` a device knows how to compute a result. Therefore the problem 2 is solved.
+- Evaluator calls method `prepare()` of this handler. `prepare` method can internally call `prepare` methods of child nodes, get and store (for using during calculation) a pointer to the device memory or evaluate non-lazy expression and store the pointer to the device memory where the result of evaluation of non-lazy expression is placed. It solves 1 and 3 problems.
+- Then evaluator launches the kernel and passes as an argument (by copying) the prepared root expression handler. The kernel just calls `get_value` method of the handler which recursively calls the `get_value` methods of the whole trees. And since the functor for calculating the result can be stored in the `AccExpressionHandler` a device knows how to compute the result. Therefore the problem 2 is solved.
 
-So, we end up in only 1 fused kernel launch and only 1 memory allocation (for the result of the whole expression) for all our expression unless some of the expressions are non-lazy evaluatable (in this case the number of kernel launches and memory allocation has been increased by the number of non-lazy evaluatable expressions).
+So, we end up in only 1 fused kernel launch and only 1 memory allocation (for the result of the whole expression) for all our expression unless some of the expressions are non-lazy evaluatable (in this case the number of kernel launches and memory allocation will be increased by the number of non-lazy evaluatable expressions).
 
 ### Limitations
-Since `get_value` method is called for all nodes except the leaf ones, theoretically the kernel could run out of stack memory. But since usually functors and `get_value` implementations itself very simple we hope that device compiler will inline them. If it doesn't happened the only possible way to solve the problem is to split expression into two subexpressions and evaluate the first one by assigning to `Vector`.
+Since `get_value` method is called for all nodes except leaves, theoretically the kernel could run out of stack memory. But since usually functors and `get_value` implementations itself are very simple I **hope** that device compiler will inline them. If it didn't happen the only possible way to solve the problem is to split expression into two subexpressions and evaluate the first one by assigning to a `Vector`.
 
-Also currently expression supports only 1 dimensional vectors, but they could be extended for arbitrary number of dimensions.
+Also currently expressions support only 1 dimensional vectors, but they can be extended for arbitrary number of dimensions.
 
-Since the expression trees are lazy, when one constructs an expression tree and then change one of an operand (e.g. changed the first element), the result after assigning the tree to a `Vector` will be calculated using a changed operand.
+Since the expression trees are lazy, when one constructs an expression tree and then change one of operands (e.g. changed the first element), the result after assigning the tree to a `Vector` will be calculated using a changed operand.
 
 The current implementation of assigning kernel is blocking (waits for completion of kernel), but theoretically it can be non-blocking if the user code guarantees that no one will use an internal `Vector`'s buffer from other queues (because otherwise it can end up in a race condition).
